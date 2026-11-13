@@ -22,6 +22,7 @@ Le moteur est celui du Sandbox, **non modifié sur disque** (`vendor/sandbox2.ht
 | `GET /api/meta` | tour, échéance, résolution en cours |
 | `GET /api/state` | état public complet (phase 1: pas d'information cachée) |
 | `GET /api/orders?seat&token` / `POST /api/orders` | lire / remplacer les ordres du siège pour le tour courant |
+| `POST /api/admin/token {seat}` | nouveau jeton pour un siège (l'ancien cesse de marcher) |
 | `POST /api/admin/new`, `/api/admin/resolve` | création de partie, clôture du tour (en-tête `X-Admin-Key`) |
 
 Ordres: `move{army,x,y}` (d), `claim{army,r}`, `build{army,kind}`, `raise{building}`, `flag{army,color}`, `disband{army,on}`. Chaque ordre est vérifié contre le propriétaire du siège à la résolution.

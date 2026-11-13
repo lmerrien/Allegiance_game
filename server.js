@@ -77,6 +77,13 @@ const server = http.createServer(async (req, res) => {
       if (game && !b.force) return send(req, res, 409, { error: 'une partie existe déjà (force:true pour écraser)' });
       const tokens = await newGame(Math.min(52, +b.realms || 52)); return send(req, res, 200, { game: GAME_ID, turn: 1, tokens });
     }
+    if (p === '/api/admin/token' && req.method === 'POST') {          // nouveau jeton pour un siège (jeton perdu ou à renouveler)
+      if (!isAdmin(req)) return send(req, res, 403, { error: 'admin' });
+      const b = await body(req), seats = await store.getSeats(GAME_ID);
+      if (!seats[b.seat]) return send(req, res, 404, { error: 'siège inconnu' });
+      const t = crypto.randomBytes(12).toString('hex'); await store.putSeats(GAME_ID, { [b.seat]: { token_hash: sha(t), name: seats[b.seat].name } });
+      return send(req, res, 200, { seat: b.seat, token: t });
+    }
     if (p === '/api/admin/resolve' && req.method === 'POST') { if (!isAdmin(req)) return send(req, res, 403, { error: 'admin' }); return send(req, res, 200, await resolveTurn()); }
     // fichiers statiques
     let f = path.normalize(path.join(__dirname, 'public', p === '/' ? 'index.html' : p)); if (!f.startsWith(path.join(__dirname, 'public'))) return send(req, res, 403, 'no', 'text/plain');
