@@ -14,5 +14,5 @@ if (!url || !key) { console.error('Définis SUPABASE_URL et SUPABASE_SERVICE_KEY
     const o = await s.getOrders(id, 1); ok('orders: écriture, remplacement, lecture', o.A && o.A.length === 2);
     const big = { pad: 'x'.repeat(250e3) }; await s.putGame({ id, turn: 2, state: big, report: [], deadline: null }); const g2 = await s.getGame(id); ok('games: état de 250 Ko', g2 && g2.turn === 2 && g2.state.pad.length === 250e3);
   } catch (e) { console.error('Erreur:', e.message); process.exitCode = 1; }
-  try { await fetch(url.replace(/\/$/, '') + '/rest/v1/games?id=eq.' + id, { method: 'DELETE', headers: { apikey: key, Authorization: 'Bearer ' + key } }); console.log('nettoyage fait (seats et orders suivent par cascade)'); } catch (e) {}
+  try { await fetch(url.replace(/\/$/, '') + '/rest/v1/games?id=eq.' + id, { method: 'DELETE', headers: Object.assign({ apikey: key }, key.startsWith('eyJ') ? { Authorization: 'Bearer ' + key } : {}) }); console.log('nettoyage fait (seats et orders suivent par cascade)'); } catch (e) {}
 })();
