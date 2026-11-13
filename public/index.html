@@ -1,0 +1,94 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Allégeance</title>
+<style>
+ body{margin:0;font:14px system-ui,sans-serif;display:flex;height:100vh;background:#1c1b19;color:#222}
+ #map{flex:1;position:relative;overflow:hidden;background:#9fc3d6}
+ canvas{position:absolute;left:0;top:0;cursor:crosshair}
+ #side{width:320px;background:#f4efe3;padding:10px;overflow:auto;box-sizing:border-box}
+ h1{font-size:16px;margin:0 0 6px} h2{font-size:13px;margin:12px 0 4px;text-transform:uppercase;color:#6a5d45}
+ button{padding:5px 9px;margin:2px 2px 2px 0;cursor:pointer} .sm{font-size:12px;color:#555} .err{color:#a00}
+ #orders div{font-size:12px;padding:1px 0} #report{font-size:12px;max-height:200px;overflow:auto}
+ .chip{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #0004}
+</style></head><body>
+<div id="map"><canvas id="c"></canvas></div>
+<div id="side">
+ <h1>Allégeance</h1><div id="head" class="sm">chargement…</div>
+ <h2>Ton royaume</h2><div id="me" class="sm"></div>
+ <h2>Armée choisie</h2><div id="sel" class="sm">clique une de tes armées (cercle bordé de noir)</div>
+ <div><button id="bClaim">Réclamer (2 d)</button><button id="bCancel">Annuler son ordre</button></div>
+ <h2>Ordres de ce tour</h2><div id="orders" class="sm"></div>
+ <div><button id="bSend"><b>Envoyer les ordres</b></button><button id="bClear">Tout effacer</button></div><div id="msg" class="sm"></div>
+ <h2>Rapport du dernier tour</h2><div id="report" class="sm"></div>
+ <p class="sm">Molette: zoom · glisser: déplacer · clic sur la carte: ordre de déplacement pour l'armée choisie (max 3 d par tour).</p>
+</div>
+<script>
+'use strict';
+var Q=new URLSearchParams(location.search), SEAT=Q.get('seat')||'', TOKEN=Q.get('token')||'';
+var D=34, world, S, meta, KEYS='', orders=[], sel=null, view={s:4,x:0,y:0}, base=null, shown=0;
+var c=document.getElementById('c'), ctx=c.getContext('2d'), mapEl=document.getElementById('map');
+function col(i,a){ return 'hsl('+((i*137.508)%360)+',55%,'+(a||55)+'%)'; }
+function unrle(a,n){ var out=new Int8Array(n),k=0; for(var i=0;i<a.length;i+=2) for(var j=0;j<a[i+1];j++) out[k++]=a[i]; return out; }
+function $(id){ return document.getElementById(id); }
+function say(t,bad){ var m=$('msg'); m.textContent=t; m.className='sm'+(bad?' err':''); }
+
+async function load(){
+  meta=await (await fetch('/api/meta')).json();
+  if(!meta.exists){ $('head').textContent='Aucune partie créée.'; return; }
+  KEYS=meta.realms;
+  if(!world) world=await (await fetch('/api/world')).json();
+  var r=await (await fetch('/api/state')).json(); S=r; shown=r.turn;
+  $('head').innerHTML='Tour <b>'+r.turn+'</b>'+(r.deadline?' · échéance '+new Date(r.deadline).toLocaleString():'')+' · siège <b>'+(SEAT||'(spectateur)')+'</b>';
+  $('report').innerHTML=(r.report||[]).map(function(l){return '<div>'+l.replace(/</g,'&lt;')+'</div>';}).join('')||'—';
+  if(SEAT&&TOKEN){ var o=await fetch('/api/orders?seat='+SEAT+'&token='+TOKEN); if(o.ok){ var j=await o.json(); if(!orders.length) orders=j.orders; } else say('jeton invalide',true); }
+  bakeBase(); sideInfo(); listOrders(); draw();
+}
+function bakeBase(){
+  var GW=world.size[0]*8, GH=world.size[1]*8, land=unrle(S.state.land,GW*GH);
+  base=document.createElement('canvas'); base.width=GW; base.height=GH; var b=base.getContext('2d'), img=b.createImageData(GW,GH), px=img.data;
+  var pal=[]; for(var i=0;i<KEYS.length;i++){ var h=((i*137.508)%360)/360, s=.5, l=.62, q=l+s-l*s, p=2*l-q;
+    var f=function(t){ t=(t+1)%1; return t<1/6?p+(q-p)*6*t:t<.5?q:t<2/3?p+(q-p)*(2/3-t)*6:p; }; pal.push([f(h+1/3)*255,f(h)*255,f(h-1/3)*255]); }
+  for(var k=0;k<land.length;k++){ var v=land[k], o=k*4, rgb;
+    if(v<0) rgb=[159,195,214]; else if(v===0) rgb=[233,223,194]; else rgb=pal[v-1]||[200,200,200];
+    px[o]=rgb[0]; px[o+1]=rgb[1]; px[o+2]=rgb[2]; px[o+3]=255; }
+  b.putImageData(img,0,0);
+}
+function fit(){ c.width=mapEl.clientWidth; c.height=mapEl.clientHeight; if(!view.set){ view.s=Math.min(c.width,c.height)/world.size[0]; view.x=0; view.y=0; view.set=1; } draw(); }
+function X(x){ return (x-view.x)*view.s; } function Y(y){ return (y-view.y)*view.s; }
+function draw(){
+  if(!base) return; ctx.clearRect(0,0,c.width,c.height); ctx.imageSmoothingEnabled=false;
+  var W=world.size[0]; ctx.drawImage(base,X(0),Y(0),W*view.s,W*view.s);
+  ctx.strokeStyle='#7a6a45'; ctx.lineWidth=1.2; world.coast.forEach(function(r){ ctx.beginPath(); r.forEach(function(p,i){ i?ctx.lineTo(X(p[0]),Y(p[1])):ctx.moveTo(X(p[0]),Y(p[1])); }); ctx.closePath(); ctx.stroke(); });
+  world.chains.forEach(function(ch){ var L=[],R=[],P=ch.pts; P.forEach(function(p,i){ var a=P[Math.max(0,i-1)],b=P[Math.min(P.length-1,i+1)],dx=b[0]-a[0],dy=b[1]-a[1],n=Math.hypot(dx,dy)||1,w=ch.ws[i]/2; L.push([p[0]-dy/n*w,p[1]+dx/n*w]); R.push([p[0]+dy/n*w,p[1]-dx/n*w]); });
+    ctx.beginPath(); L.concat(R.reverse()).forEach(function(p,i){ i?ctx.lineTo(X(p[0]),Y(p[1])):ctx.moveTo(X(p[0]),Y(p[1])); }); ctx.closePath(); ctx.fillStyle='rgba(120,100,80,.55)'; ctx.fill(); });
+  ctx.strokeStyle='#3f7fb5'; ctx.lineWidth=Math.max(1,.25*view.s); world.rivers.forEach(function(rv){ ctx.beginPath(); rv.pts.forEach(function(p,i){ i?ctx.lineTo(X(p[0]),Y(p[1])):ctx.moveTo(X(p[0]),Y(p[1])); }); ctx.stroke(); });
+  S.state.structures.forEach(function(s){ var i=KEYS.indexOf(s.owner), r=.7*view.s; ctx.fillStyle=col(i,35); ctx.fillRect(X(s.x/D)-r,Y(s.y/D)-r,2*r,2*r); ctx.strokeStyle='#000'; ctx.lineWidth=1; ctx.strokeRect(X(s.x/D)-r,Y(s.y/D)-r,2*r,2*r); });
+  orders.forEach(function(o){ if(o.op!=='move') return; var a=S.state.discs.find(function(d){return d.name===o.army;}); if(!a) return; ctx.strokeStyle='#000'; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(X(a.x/D),Y(a.y/D)); ctx.lineTo(X(o.x),Y(o.y)); ctx.stroke(); ctx.setLineDash([]); });
+  S.state.discs.forEach(function(a){ var i=KEYS.indexOf(a.owner), r=.5*view.s, mine=a.owner===SEAT; ctx.beginPath(); ctx.arc(X(a.x/D),Y(a.y/D),r,0,6.3); ctx.fillStyle=col(i,40); ctx.fill();
+    ctx.lineWidth=(sel===a.name)?3:(mine?1.5:.6); ctx.strokeStyle=(sel===a.name)?'#d00':'#000'; ctx.stroke(); });
+}
+function sideInfo(){ if(!SEAT){ $('me').textContent='Ajoute ?seat=X&token=… à l\'adresse pour jouer.'; return; }
+  var p=S.state.led.players[SEAT]; var n=S.state.discs.filter(function(d){return d.owner===SEAT;}).length, land=0, l=unrle(S.state.land,world.size[0]*world.size[1]*64), v=KEYS.indexOf(SEAT)+1;
+  for(var i=0;i<l.length;i++) if(l[i]===v) land++;
+  $('me').innerHTML='<span class="chip" style="background:'+col(KEYS.indexOf(SEAT))+'"></span><b>'+SEAT+'</b> · trésor '+(p?p.treasury:'?')+' · '+n+' armées · '+(land/64).toFixed(0)+' d² de terres'; }
+function listOrders(){ $('orders').innerHTML=orders.map(function(o,i){ return '<div>'+o.op+' '+(o.army||o.building||'')+(o.x!=null?' → '+(+o.x).toFixed(1)+', '+(+o.y).toFixed(1):'')+(o.r?' r='+o.r:'')+' <a href="#" data-i="'+i+'">✕</a></div>'; }).join('')||'—';
+  $('orders').querySelectorAll('a').forEach(function(a){ a.onclick=function(e){ e.preventDefault(); orders.splice(+a.dataset.i,1); listOrders(); draw(); }; }); }
+function put(o){ orders=orders.filter(function(x){ return !(x.army&&x.army===o.army&&x.op===o.op); }); orders.push(o); listOrders(); draw(); }
+function pos(e){ var r=c.getBoundingClientRect(); return [(e.clientX-r.left)/view.s+view.x,(e.clientY-r.top)/view.s+view.y]; }
+var drag=null;
+c.onmousedown=function(e){ drag={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y,moved:false}; };
+window.onmousemove=function(e){ if(!drag) return; var dx=e.clientX-drag.x, dy=e.clientY-drag.y; if(Math.abs(dx)+Math.abs(dy)>4) drag.moved=true; if(drag.moved){ view.x=drag.vx-dx/view.s; view.y=drag.vy-dy/view.s; draw(); } };
+window.onmouseup=function(e){ if(!drag) return; var was=drag; drag=null; if(was.moved||!S) return;
+  var p=pos(e), hit=S.state.discs.filter(function(a){ return a.owner===SEAT && Math.hypot(a.x/D-p[0],a.y/D-p[1])<.6; })[0];
+  if(hit){ sel=hit.name; $('sel').textContent=hit.name+' en ('+(hit.x/D).toFixed(1)+', '+(hit.y/D).toFixed(1)+')'; draw(); }
+  else if(sel&&SEAT){ put({op:'move',army:sel,x:+p[0].toFixed(2),y:+p[1].toFixed(2)}); } };
+c.onwheel=function(e){ e.preventDefault(); var p=pos(e), f=e.deltaY<0?1.2:1/1.2; view.s=Math.max(1,Math.min(40,view.s*f)); view.x=p[0]-(e.clientX-c.getBoundingClientRect().left)/view.s; view.y=p[1]-(e.clientY-c.getBoundingClientRect().top)/view.s; draw(); };
+$('bClaim').onclick=function(){ if(sel) put({op:'claim',army:sel,r:2}); };
+$('bCancel').onclick=function(){ orders=orders.filter(function(o){return o.army!==sel;}); listOrders(); draw(); };
+$('bClear').onclick=function(){ orders=[]; listOrders(); draw(); };
+$('bSend').onclick=async function(){ if(!SEAT) return say('pas de siège',true);
+  var r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seat:SEAT,token:TOKEN,turn:shown,orders:orders})}); var j=await r.json();
+  say(r.ok?'Ordres enregistrés ('+j.count+') pour le tour '+j.turn+'. Tu peux les modifier jusqu\'à la clôture.':(j.error||'erreur'),!r.ok); };
+window.onresize=fit;
+load().then(fit);
+setInterval(async function(){ try{ var m=await (await fetch('/api/meta')).json(); if(m.turn&&m.turn!==shown&&!m.resolving){ orders=[]; await load(); say('Nouveau tour '+m.turn+' — carte mise à jour.'); } }catch(e){} },10000);
+</script></body></html>
