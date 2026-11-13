@@ -16,6 +16,13 @@ Le moteur est celui du Sandbox, **non modifié sur disque** (`vendor/sandbox2.ht
 3. Héberge `server.js` sur un service Node (Render, Fly, Railway…). Un service gratuit qui s'endort convient: l'état est en base et se recharge au réveil.
 4. Optionnel: `TURN_HOURS=24` clôture automatiquement le tour à l'échéance.
 
+## Déploiement sur Vercel (gratuit, plan Hobby)
+Le dossier `api/` + `vercel.json` font tourner la même logique (`lib/router.js`) en fonction serverless; `public/` est servi en statique.
+1. Sur vercel.com: *Add New → Project*, importe ce dépôt GitHub (aucune commande de build).
+2. *Settings → Environment Variables*: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ADMIN_KEY` (+ `CRON_SECRET` et `TURN_HOURS=24` si tu veux la clôture automatique).
+3. Déploie, puis crée la partie avec `POST https://<ton-projet>.vercel.app/api/admin/new` (mêmes commandes `curl` qu'en local, en changeant l'adresse).
+Notes: la résolution (~20 s) tient dans les 300 s du plan Hobby (Fluid compute). Le cron Hobby ne tourne qu'une fois par jour (`vercel.json`, 10 h UTC). Le drapeau `resolving` est par instance: la mise à jour conditionnelle `updateGameIfTurn` empêche qu'un tour soit résolu deux fois. Plan Hobby = usage personnel non commercial.
+
 ## API
 | | |
 |---|---|

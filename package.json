@@ -1,0 +1,1 @@
+{ "name": "allegiance-game", "version": "0.1.0", "private": true, "description": "Allégeance — serveur de jeu", "engines": { "node": ">=20" }, "scripts": { "start": "node server.js", "check": "node scripts/check-supabase.js" } }
